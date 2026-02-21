@@ -1,0 +1,119 @@
+---
+title: "Portfolio Project Stat 436"
+author: "Benjamin Kang"
+date: "2026-02-23"
+output: html_document
+runtime: shiny
+---
+### Libraries
+
+```{r setup, include=FALSE}
+library(shiny)
+library(tidyverse)
+```
+
+### Dataset
+
+```{r}
+# Load in data
+mental_health_data = read.csv("https://raw.githubusercontent.com/benkang887/Stat436/refs/heads/main/Student_social_media_addiction")
+```
+
+```{r}
+# Check whether there are missing values
+colSums(is.na(mental_health_data))
+```
+
+
+
+```{r}
+# Gather all unique platforms to use them as drop down input
+social_media_platform_type <- pull(mental_health_data, Most_Used_Platform)%>%unique()
+social_media_platform_type = c("All", social_media_platform_type)
+```
+
+
+### Functions
+
+```{r}
+# Helper function for creating scatter plot
+scatterplot <- function(df) {
+   ggplot(df) +
+     geom_point(mapping = 
+       aes(Avg_Daily_Usage_Hours, Mental_Health_Score, size = selected, alpha = selected) # Here we use selected for size and alpha so we can have all points on the plot, and highlighting the ones that are selected
+     ) +
+     scale_size(limits = c(0, 1), range = c(.5, 2), guide = "none") +
+     scale_alpha(limits = c(0, 1), range = c(.1, 1), guide = "none") + xlab("Daily Screen Time (hours)") + ylab("Mental Health Score")
+}
+
+
+# Helper function for creating the histogram for relationship categories
+relationship_plot <- function(df) {
+   ggplot(df %>% filter(selected == 1)) +
+     geom_bar(aes(x = Relationship_Status)) + xlab("Relationship type") + ylab("Count")
+}
+
+# Helper function for generating summary statistics for scatterplot
+generate_summary_data <- function(df){
+  df %>% filter(selected == 1) %>% 
+    summarize("avg screen time" = mean(Avg_Daily_Usage_Hours),
+                   "avg mental health score" = mean(Mental_Health_Score))
+}
+
+# Helper function for generating summary statistics for relationship data
+generate_relationship_data = function(df){
+   df %>% filter(selected == 1) %>% group_by(Relationship_Status) %>% summarise("Avg daily use" = mean(Avg_Daily_Usage_Hours), "Avg mental health Score" = mean(Mental_Health_Score), "Count" = n())
+}
+
+# Helper function to mutate dataframe for filter_individual
+# When "All" is selected, all platform's data should be shown
+# filters based on platform selected and hours of sleep per night 
+add_selected_column = function(df, platform, hr_sleep){
+  df %>% mutate(selected = (if ("All" %in% platform) 1 else 1 * Most_Used_Platform %in% platform) * (Sleep_Hours_Per_Night >= hr_sleep[1] & Sleep_Hours_Per_Night <= hr_sleep[2]))
+}
+```
+
+### App 
+
+```{r}
+# User interface
+ ui <- fluidPage(
+   titlePanel("Analysis of between Social Media Use and Mental Health"),
+   selectInput("platform", "Platform Type", social_media_platform_type),
+   sliderInput("hr_sleep", "Hours of Sleep per Night", min = 4, max = 9, value = c(4, 9), step = 0.1),
+   plotOutput("scatterplot"),
+   tableOutput("dt"),
+   plotOutput("relationship_status"),
+   tableOutput("relationship_data")
+ )
+ 
+
+# Server side logic
+ server <- function(input, output) {
+   filtered_individuals <- reactive({
+     add_selected_column(mental_health_data,input$platform, input$hr_sleep)
+   })
+   
+   summary_data <- reactive({
+     generate_summary_data(filtered_individuals())
+   })
+   
+   
+   output$scatterplot <- renderPlot({
+     scatterplot(filtered_individuals())
+   })
+   
+   output$relationship_status <- renderPlot({
+     relationship_plot(filtered_individuals())
+   })
+
+  output$dt <- renderTable(generate_summary_data(filtered_individuals()))
+  
+  output$relationship_data<- renderTable(generate_relationship_data(filtered_individuals()))
+
+ }
+ 
+ app <- shinyApp(ui, server)
+ app
+```
+
